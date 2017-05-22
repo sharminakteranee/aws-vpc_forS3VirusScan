@@ -1,0 +1,113 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Security: Trusted Advisor setup, us-east-1 only, a cloudonaut.io template'
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+    - Label:
+        default: 'Parent Stacks'
+      Parameters:
+      - ParentAlertStack
+Parameters:
+  ParentAlertStack:
+    Description: 'Stack name of parent alert stack based on operations/alert.yaml template.'
+    Type: String
+Mappings:
+  RegionMap:
+    'us-east-1': # Trusted Advisor runs in us-east-1 but covers all regions
+      Id: AlertStackTopic
+Resources:
+  Role:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: 'lambda.amazonaws.com'
+          Action:
+          - 'sts:AssumeRole'
+      ManagedPolicyArns:
+      - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+      - PolicyName: support
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+            - 'support:*'
+            Resource: '*'
+  Cron:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      ScheduleExpression: 'rate(10 minutes)'
+      State: ENABLED
+      Targets:
+      - Arn: !GetAtt 'Lambda.Arn'
+        Id: Lambda
+  LambdaPermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:invokeFunction'
+      FunctionName: !GetAtt 'Lambda.Arn'
+      SourceArn: !GetAtt 'Cron.Arn'
+      Principal: 'events.amazonaws.com'
+  Lambda:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Code:
+        ZipFile: |
+          const AWS = require('aws-sdk');
+          const support = new AWS.Support();
+          function check(check) {
+            return support.refreshTrustedAdvisorCheck({checkId: check.id}).promise()
+              .then(() => {})
+              .catch((err) => {
+                if (err.code === 'InvalidParameterValueException') {
+                  return {};
+                } else {
+                  throw err;
+                }
+              });
+          }
+          exports.handler = (event, context, cb) => {
+            support.describeTrustedAdvisorChecks({language: 'en'}).promise()
+              .then((data) => {
+                return Promise.all(data.checks.map(check));
+              })
+              .then(() => cb())
+              .catch((err) => cb(err));
+          };
+      Handler: 'index.handler'
+      MemorySize: 1536
+      Role: !GetAtt 'Role.Arn'
+      Runtime: 'nodejs6.10'
+      Timeout: 60
+  Rule:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      EventPattern: |
+        {
+          "source": [
+            "aws.trustedadvisor"
+          ],
+          "detail-type": [
+            "Trusted Advisor Check Item Refresh Notification"
+          ],
+          "detail": {
+            "status": [
+              "ERROR",
+              "WARN"
+            ]
+          }
+        }
+      State: ENABLED
+      Targets:
+      - Arn:
+          'Fn::ImportValue': !Sub '${ParentAlertStack}-TopicARN'
+        Id: !FindInMap [RegionMap, !Ref 'AWS::Region', Id]
+Outputs:
+  TemplateID:
+    Description: 'cloudonaut.io template id'
+    Value: 'security/trusted-advisor'

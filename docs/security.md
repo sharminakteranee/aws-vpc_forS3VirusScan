@@ -168,3 +168,29 @@ If you want to use an external S3 bucket, the bucket needs to have the following
 ```
 
 Replace `$ExternalTrailBucket` with the name of your bucket, and add a row for every account you want to write from `$AccountId[*]`.
+
+# AWS Trusted Advisor setup
+This template will deliver [Trusted Advisor](https://aws.amazon.com/premiumsupport/trustedadvisor/) check results (`ERROR` and `WARN`) to a stack based on `operations/alert.yaml` where you can subscribe to never miss important check results.
+
+> Trusted Advisor only runs in the N. Virginia region but still checks all regions. CloudFormation stacks must be created in the N. Virginia otherwise they fail with an Template validation error: Template error: Unable to get mapping for RegionMap::$Region::Id.
+
+> Works only with an AWS Business or Enterprise Support Plan
+
+## Installation Guide
+1. [![Launch Stack](./img/launch-stack.png)](https://console.aws.amazon.com/cloudformation/home#/stacks/new?stackName=security-trusted-advisor&templateURL=https://s3-eu-west-1.amazonaws.com/widdix-aws-cf-templates-releases-eu-west-1/__VERSION__/security/trusted-advisor.yaml)
+1. **Select the N. Virginia (`us-east-1`) region.**
+1. Click **Next** to proceed with the next step of the wizard.
+1. Specify a name and all parameters for the stack.
+1. Click **Next** to proceed with the next step of the wizard.
+1. Click **Next** to skip the **Options** step of the wizard.
+1. Check the **I acknowledge that this template might cause AWS CloudFormation to create IAM resources.** checkbox.
+1. Click **Create** to start the creation of the stack.
+1. Wait until the stack reaches the state **CREATE_COMPLETE**
+
+The Trusted Advisor checks are triggered every 10 minutes. If you do not receive an email you may have no checks in the `ERROR` or `WARN` state (which is good!). Visit https://console.aws.amazon.com/trustedadvisor/ to see the current state of all checks in your AWS account.
+
+## Dependencies
+* `operations/alert.yaml` (**required**)
+
+## Limitations
+* Works only with an AWS Business or Enterprise Support Plan
